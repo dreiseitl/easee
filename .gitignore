@@ -55,3 +55,6 @@ htmlcov/
 *.pyc
 __pycache__/
 
+# Cache
+cache/
+

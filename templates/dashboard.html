@@ -224,6 +224,17 @@
                 <input type="month" id="month-select">
             </div>
             
+            <div class="form-group">
+                <label for="price-area-select">Price Area (Prisområde)</label>
+                <select id="price-area-select">
+                    <option value="NO1">NO1 - Oslo / Øst-Norge</option>
+                    <option value="NO2">NO2 - Kristiansand / Sør-Norge</option>
+                    <option value="NO3">NO3 - Trondheim / Midt-Norge</option>
+                    <option value="NO4">NO4 - Tromsø / Nord-Norge</option>
+                    <option value="NO5">NO5 - Bergen / Vest-Norge</option>
+                </select>
+            </div>
+            
             <button class="btn" onclick="generateReport()" id="generate-btn" disabled>Generate Report</button>
             
             <div id="error-message" class="error hidden"></div>
@@ -323,10 +334,12 @@
         
         document.getElementById('charger-select').addEventListener('change', updateGenerateButton);
         document.getElementById('month-select').addEventListener('change', updateGenerateButton);
+        document.getElementById('price-area-select').addEventListener('change', updateGenerateButton);
         
         async function generateReport() {
             const chargerId = document.getElementById('charger-select').value;
             const month = document.getElementById('month-select').value;
+            const priceArea = document.getElementById('price-area-select').value;
             
             if (!chargerId || !month) {
                 showError('Please select a charger and month');
@@ -340,7 +353,7 @@
                 hideError();
                 hideReport();
                 
-                const response = await fetch(`/api/consumption/${chargerId}?year=${year}&month=${monthNum}`);
+                const response = await fetch(`/api/consumption/${chargerId}?year=${year}&month=${monthNum}&price_area=${priceArea}`);
                 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
@@ -371,6 +384,15 @@
             const selectedCharger = chargers.find(c => c.id === chargerId || String(c.id) === chargerId);
             const chargerName = selectedCharger ? (selectedCharger.name || `Charger ${selectedCharger.id}`) : 'Unknown';
             
+            const priceAreaNames = {
+                'NO1': 'Oslo / Øst-Norge',
+                'NO2': 'Kristiansand / Sør-Norge',
+                'NO3': 'Trondheim / Midt-Norge',
+                'NO4': 'Tromsø / Nord-Norge',
+                'NO5': 'Bergen / Vest-Norge'
+            };
+            const priceAreaName = priceAreaNames[data.price_area] || data.price_area;
+            
             let html = `
                 <div class="report-summary">
                     <h3>Summary for ${month}</h3>
@@ -379,12 +401,20 @@
                         <span class="summary-value">${chargerName}</span>
                     </div>
                     <div class="summary-item">
+                        <span class="summary-label">Price Area:</span>
+                        <span class="summary-value">${data.price_area} - ${priceAreaName}</span>
+                    </div>
+                    <div class="summary-item">
                         <span class="summary-label">Total Consumption:</span>
                         <span class="summary-value">${data.total_kwh.toFixed(2)} kWh</span>
                     </div>
                     <div class="summary-item">
-                        <span class="summary-label">Price (1 kWh = 1 NOK):</span>
-                        <span class="summary-value">${data.total_price.toFixed(2)} NOK</span>
+                        <span class="summary-label">Total Cost:</span>
+                        <span class="summary-value">${data.total_cost.toFixed(2)} NOK</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Average Price per kWh:</span>
+                        <span class="summary-value">${data.total_kwh > 0 ? (data.total_cost / data.total_kwh).toFixed(4) : '0.0000'} NOK/kWh</span>
                     </div>
                 </div>
             `;
@@ -397,6 +427,8 @@
                             <tr>
                                 <th>Date & Time</th>
                                 <th>Consumption (kWh)</th>
+                                <th>Price (NOK/kWh)</th>
+                                <th>Cost (NOK)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -411,10 +443,14 @@
                         hour: '2-digit',
                         minute: '2-digit'
                     });
+                    const priceDisplay = entry.price_per_kwh > 0 ? entry.price_per_kwh.toFixed(4) : 'N/A';
+                    const costDisplay = entry.cost > 0 ? entry.cost.toFixed(2) : '0.00';
                     html += `
                         <tr>
                             <td>${dateStr}</td>
                             <td>${entry.consumption.toFixed(3)}</td>
+                            <td>${priceDisplay}</td>
+                            <td>${costDisplay}</td>
                         </tr>
                     `;
                 });
@@ -431,6 +467,9 @@
                 html += '<li>The API returned an empty dataset</li>';
                 html += '</ul>';
             }
+            
+            // Add attribution for electricity prices
+            html += '<p style="margin-top: 20px; font-size: 12px; color: #999; text-align: center;">Strømpriser levert av <a href="https://www.hvakosterstrommen.no" target="_blank" style="color: #667eea;">Hva koster strømmen.no</a></p>';
             
             reportContent.innerHTML = html;
             reportSection.classList.remove('hidden');

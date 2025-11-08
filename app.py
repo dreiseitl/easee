@@ -2,6 +2,11 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 import requests
 from datetime import datetime, timedelta
 import os
+import json
+import urllib3
+
+# Disable SSL warnings when verify=False is used
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -94,6 +99,96 @@ class EaseeAPI:
 # Initialize API client
 easee_api = EaseeAPI()
 
+# Electricity price API base URL
+ELECTRICITY_PRICE_API_BASE = "https://www.hvakosterstrommen.no/api/v1/prices"
+CACHE_DIR = "cache/electricity_prices"
+
+def ensure_cache_dir():
+    """Ensure the cache directory exists"""
+    os.makedirs(CACHE_DIR, exist_ok=True)
+
+def get_cache_file_path(year, month, day, price_area):
+    """Get the local cache file path for a specific day"""
+    return os.path.join(CACHE_DIR, f"{year}_{month:02d}_{day:02d}_{price_area}.json")
+
+def get_electricity_prices(year, month, price_area="NO1"):
+    """
+    Get hourly electricity prices for a given month and price area
+    Uses local cache if available, otherwise downloads and caches
+    Returns dict with hour -> price mapping
+    """
+    ensure_cache_dir()
+    prices_by_hour = {}
+    
+    # Get number of days in the month
+    if month == 12:
+        num_days = 31
+    elif month in [1, 3, 5, 7, 8, 10]:
+        num_days = 31
+    elif month in [4, 6, 9, 11]:
+        num_days = 30
+    else:  # February
+        if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+            num_days = 29
+        else:
+            num_days = 28
+    
+    # Fetch prices for each day in the month
+    for day in range(1, num_days + 1):
+        cache_file = get_cache_file_path(year, month, day, price_area)
+        daily_prices = None
+        
+        # Try to load from cache first
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r', encoding='utf-8') as f:
+                    daily_prices = json.load(f)
+                    print(f"Loaded prices from cache: {year}-{month:02d}-{day:02d}_{price_area}")
+            except Exception as e:
+                print(f"Error reading cache file {cache_file}: {str(e)}")
+                # If cache read fails, continue to download
+        
+        # If not in cache, download from API
+        if daily_prices is None:
+            try:
+                url = f"{ELECTRICITY_PRICE_API_BASE}/{year}/{month:02d}-{day:02d}_{price_area}.json"
+                # Disable SSL verification to handle certificate issues
+                # Note: This is safe for public APIs that don't require authentication
+                response = requests.get(url, timeout=10, verify=False)
+                
+                if response.status_code == 200:
+                    daily_prices = response.json()
+                    # Save to cache
+                    try:
+                        with open(cache_file, 'w', encoding='utf-8') as f:
+                            json.dump(daily_prices, f, indent=2, ensure_ascii=False)
+                        print(f"Downloaded and cached prices: {year}-{month:02d}-{day:02d}_{price_area}")
+                    except Exception as e:
+                        print(f"Error saving cache file {cache_file}: {str(e)}")
+                else:
+                    print(f"Error fetching prices for {year}-{month:02d}-{day:02d}: HTTP {response.status_code}")
+                    continue
+            except Exception as e:
+                print(f"Error fetching prices for {year}-{month:02d}-{day:02d}: {str(e)}")
+                continue
+        
+        # Process the price data
+        if daily_prices:
+            for price_entry in daily_prices:
+                # Parse the time_start to get the hour
+                time_start = price_entry.get('time_start', '')
+                if time_start:
+                    try:
+                        # Parse ISO 8601 format: "2022-10-17T00:00:00+02:00"
+                        dt = datetime.fromisoformat(time_start.replace('Z', '+00:00'))
+                        # Use as key: year-month-day-hour
+                        hour_key = dt.strftime('%Y-%m-%dT%H:00:00')
+                        prices_by_hour[hour_key] = price_entry.get('NOK_per_kWh', 0)
+                    except (ValueError, AttributeError):
+                        continue
+    
+    return prices_by_hour
+
 @app.route('/')
 def index():
     """Redirect to login if not authenticated"""
@@ -169,17 +264,30 @@ def api_consumption(charger_id):
     
     year = request.args.get('year', type=int)
     month = request.args.get('month', type=int)
+    price_area = request.args.get('price_area', 'NO1')  # Default to NO1 (Oslo)
     
     if not year or not month:
         return jsonify({'error': 'Year and month are required'}), 400
+    
+    # Validate price area
+    valid_price_areas = ['NO1', 'NO2', 'NO3', 'NO4', 'NO5']
+    if price_area not in valid_price_areas:
+        price_area = 'NO1'  # Default to NO1 if invalid
     
     success, result = easee_api.get_hourly_consumption(
         session['access_token'], charger_id, year, month
     )
     
     if success:
+        # Fetch electricity prices for the month
+        try:
+            prices_by_hour = get_electricity_prices(year, month, price_area)
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Error fetching electricity prices: {str(e)}'}), 500
+        
         # Calculate total consumption and price
         total_kwh = 0
+        total_cost = 0
         hourly_data = []
         
         try:
@@ -221,18 +329,47 @@ def api_consumption(charger_id):
                         
                         total_kwh += kwh
                         timestamp = entry.get('timestamp') or entry.get('date') or entry.get('time') or entry.get('dateTime')
+                        
+                        # Try to match timestamp with price
+                        price_per_kwh = 0
+                        if timestamp:
+                            try:
+                                # Parse timestamp and create hour key
+                                if isinstance(timestamp, str):
+                                    # Try to parse various formats
+                                    try:
+                                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                                    except:
+                                        # Try other formats
+                                        for fmt in ['%Y-%m-%dT%H:%M:%S', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S.%f']:
+                                            try:
+                                                dt = datetime.strptime(timestamp, fmt)
+                                                break
+                                            except:
+                                                continue
+                                    hour_key = dt.strftime('%Y-%m-%dT%H:00:00')
+                                    price_per_kwh = prices_by_hour.get(hour_key, 0)
+                            except:
+                                # If parsing fails, try to find closest match
+                                pass
+                        
+                        # Calculate cost for this hour
+                        cost = kwh * price_per_kwh
+                        total_cost += cost
+                        
                         hourly_data.append({
                             'timestamp': timestamp,
-                            'consumption': kwh
+                            'consumption': kwh,
+                            'price_per_kwh': round(price_per_kwh, 4),
+                            'cost': round(cost, 2)
                         })
-            
-            total_price = total_kwh * 1.0  # 1 kWh = 1 NOK
             
             return jsonify({
                 'success': True,
                 'consumption': result,
                 'total_kwh': round(total_kwh, 2),
-                'total_price': round(total_price, 2),
+                'total_cost': round(total_cost, 2),
+                'price_area': price_area,
                 'hourly_data': hourly_data
             })
         except Exception as e:
