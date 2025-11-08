@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EV Charging Invoicing - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            font-size: 24px;
+        }
+        
+        .logout-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.3s;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .card h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+        
+        select, input[type="month"] {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            background: white;
+        }
+        
+        select:focus, input[type="month"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border-left: 4px solid #c33;
+        }
+        
+        .report {
+            margin-top: 20px;
+        }
+        
+        .report-summary {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        
+        .report-summary h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .summary-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .summary-item:last-child {
+            border-bottom: none;
+            font-weight: 600;
+            font-size: 18px;
+            color: #667eea;
+        }
+        
+        .summary-label {
+            color: #666;
+        }
+        
+        .summary-value {
+            color: #333;
+            font-weight: 500;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        th {
+            background: #f8f9fa;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>EV Charging Invoicing System</h1>
+        <a href="/logout" class="logout-btn">Logout</a>
+    </div>
+    
+    <div class="container">
+        <div class="card">
+            <h2>Select Site and Charger</h2>
+            
+            <div class="form-group">
+                <label for="site-select">Site</label>
+                <select id="site-select" onchange="loadChargers()">
+                    <option value="">-- Select a site --</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="charger-select">Charger</label>
+                <select id="charger-select" disabled>
+                    <option value="">-- Select a charger --</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="month-select">Month</label>
+                <input type="month" id="month-select">
+            </div>
+            
+            <button class="btn" onclick="generateReport()" id="generate-btn" disabled>Generate Report</button>
+            
+            <div id="error-message" class="error hidden"></div>
+            <div id="loading" class="loading hidden">Loading...</div>
+        </div>
+        
+        <div id="report-section" class="card hidden">
+            <h2>Consumption Report</h2>
+            <div id="report-content"></div>
+        </div>
+    </div>
+    
+    <script>
+        let sites = [];
+        let chargers = [];
+        
+        // Load sites on page load
+        window.onload = function() {
+            loadSites();
+            // Set default month to current month
+            const now = new Date();
+            const monthStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+            document.getElementById('month-select').value = monthStr;
+        };
+        
+        async function loadSites() {
+            try {
+                const response = await fetch('/api/sites');
+                const data = await response.json();
+                
+                if (data.success) {
+                    sites = data.sites;
+                    const select = document.getElementById('site-select');
+                    select.innerHTML = '<option value="">-- Select a site --</option>';
+                    
+                    sites.forEach(site => {
+                        const option = document.createElement('option');
+                        option.value = site.id;
+                        option.textContent = site.name || `Site ${site.id}`;
+                        select.appendChild(option);
+                    });
+                } else {
+                    showError('Failed to load sites: ' + data.error);
+                }
+            } catch (error) {
+                showError('Error loading sites: ' + error.message);
+            }
+        }
+        
+        async function loadChargers() {
+            const siteId = document.getElementById('site-select').value;
+            const chargerSelect = document.getElementById('charger-select');
+            const generateBtn = document.getElementById('generate-btn');
+            
+            if (!siteId) {
+                chargerSelect.disabled = true;
+                chargerSelect.innerHTML = '<option value="">-- Select a charger --</option>';
+                generateBtn.disabled = true;
+                return;
+            }
+            
+            try {
+                showLoading(true);
+                const response = await fetch(`/api/chargers/${siteId}`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    chargers = data.chargers;
+                    chargerSelect.innerHTML = '<option value="">-- Select a charger --</option>';
+                    
+                    chargers.forEach(charger => {
+                        const option = document.createElement('option');
+                        option.value = charger.id;
+                        option.textContent = charger.name || `Charger ${charger.id}`;
+                        chargerSelect.appendChild(option);
+                    });
+                    
+                    chargerSelect.disabled = false;
+                    updateGenerateButton();
+                } else {
+                    showError('Failed to load chargers: ' + data.error);
+                }
+            } catch (error) {
+                showError('Error loading chargers: ' + error.message);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function updateGenerateButton() {
+            const chargerId = document.getElementById('charger-select').value;
+            const month = document.getElementById('month-select').value;
+            const generateBtn = document.getElementById('generate-btn');
+            
+            generateBtn.disabled = !chargerId || !month;
+        }
+        
+        document.getElementById('charger-select').addEventListener('change', updateGenerateButton);
+        document.getElementById('month-select').addEventListener('change', updateGenerateButton);
+        
+        async function generateReport() {
+            const chargerId = document.getElementById('charger-select').value;
+            const month = document.getElementById('month-select').value;
+            
+            if (!chargerId || !month) {
+                showError('Please select a charger and month');
+                return;
+            }
+            
+            const [year, monthNum] = month.split('-').map(Number);
+            
+            try {
+                showLoading(true);
+                hideError();
+                hideReport();
+                
+                const response = await fetch(`/api/consumption/${chargerId}?year=${year}&month=${monthNum}`);
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+                    showError('Failed to load consumption data: ' + (errorData.error || errorData.message || `HTTP ${response.status}`));
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayReport(data, month);
+                } else {
+                    showError('Failed to load consumption data: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                showError('Error generating report: ' + error.message);
+                console.error('Report generation error:', error);
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        function displayReport(data, month) {
+            const reportSection = document.getElementById('report-section');
+            const reportContent = document.getElementById('report-content');
+            
+            const chargerId = document.getElementById('charger-select').value;
+            const selectedCharger = chargers.find(c => c.id === chargerId || String(c.id) === chargerId);
+            const chargerName = selectedCharger ? (selectedCharger.name || `Charger ${selectedCharger.id}`) : 'Unknown';
+            
+            let html = `
+                <div class="report-summary">
+                    <h3>Summary for ${month}</h3>
+                    <div class="summary-item">
+                        <span class="summary-label">Charger:</span>
+                        <span class="summary-value">${chargerName}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Total Consumption:</span>
+                        <span class="summary-value">${data.total_kwh.toFixed(2)} kWh</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Price (1 kWh = 1 NOK):</span>
+                        <span class="summary-value">${data.total_price.toFixed(2)} NOK</span>
+                    </div>
+                </div>
+            `;
+            
+            if (data.hourly_data && data.hourly_data.length > 0) {
+                html += `
+                    <h3>Hourly Consumption Details</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date & Time</th>
+                                <th>Consumption (kWh)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                data.hourly_data.forEach(entry => {
+                    const date = new Date(entry.timestamp);
+                    const dateStr = date.toLocaleString('en-US', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    html += `
+                        <tr>
+                            <td>${dateStr}</td>
+                            <td>${entry.consumption.toFixed(3)}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += `
+                        </tbody>
+                    </table>
+                `;
+            } else {
+                html += '<p style="color: #666; font-style: italic;">No consumption data available for this period. This could mean:</p>';
+                html += '<ul style="color: #666; margin-top: 10px;">';
+                html += '<li>The charger had no activity during this month</li>';
+                html += '<li>The data is not yet available for this period</li>';
+                html += '<li>The API returned an empty dataset</li>';
+                html += '</ul>';
+            }
+            
+            reportContent.innerHTML = html;
+            reportSection.classList.remove('hidden');
+        }
+        
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+        
+        function hideError() {
+            document.getElementById('error-message').classList.add('hidden');
+        }
+        
+        function showLoading(show) {
+            const loadingDiv = document.getElementById('loading');
+            if (show) {
+                loadingDiv.classList.remove('hidden');
+            } else {
+                loadingDiv.classList.add('hidden');
+            }
+        }
+        
+        function hideReport() {
+            document.getElementById('report-section').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
+
