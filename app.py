@@ -101,15 +101,20 @@ easee_api = EaseeAPI()
 
 # Electricity price API base URL
 ELECTRICITY_PRICE_API_BASE = "https://www.hvakosterstrommen.no/api/v1/prices"
-CACHE_DIR = "cache/electricity_prices"
+CACHE_DIR_ELECTRICITY = "cache/electricity_prices"
+CACHE_DIR_CONSUMPTION = "cache/consumption"
 
-def ensure_cache_dir():
+def ensure_cache_dir(cache_dir):
     """Ensure the cache directory exists"""
-    os.makedirs(CACHE_DIR, exist_ok=True)
+    os.makedirs(cache_dir, exist_ok=True)
 
-def get_cache_file_path(year, month, day, price_area):
-    """Get the local cache file path for a specific day"""
-    return os.path.join(CACHE_DIR, f"{year}_{month:02d}_{day:02d}_{price_area}.json")
+def get_electricity_cache_file_path(year, month, day, price_area):
+    """Get the local cache file path for electricity prices for a specific day"""
+    return os.path.join(CACHE_DIR_ELECTRICITY, f"{year}_{month:02d}_{day:02d}_{price_area}.json")
+
+def get_consumption_cache_file_path(charger_id, year, month):
+    """Get the local cache file path for consumption data for a charger and month"""
+    return os.path.join(CACHE_DIR_CONSUMPTION, f"{charger_id}_{year}_{month:02d}.json")
 
 def get_electricity_prices(year, month, price_area="NO1"):
     """
@@ -117,7 +122,7 @@ def get_electricity_prices(year, month, price_area="NO1"):
     Uses local cache if available, otherwise downloads and caches
     Returns dict with hour -> price mapping
     """
-    ensure_cache_dir()
+    ensure_cache_dir(CACHE_DIR_ELECTRICITY)
     prices_by_hour = {}
     
     # Get number of days in the month
@@ -135,7 +140,7 @@ def get_electricity_prices(year, month, price_area="NO1"):
     
     # Fetch prices for each day in the month
     for day in range(1, num_days + 1):
-        cache_file = get_cache_file_path(year, month, day, price_area)
+        cache_file = get_electricity_cache_file_path(year, month, day, price_area)
         daily_prices = None
         
         # Try to load from cache first
@@ -274,9 +279,44 @@ def api_consumption(charger_id):
     if price_area not in valid_price_areas:
         price_area = 'NO1'  # Default to NO1 if invalid
     
-    success, result = easee_api.get_hourly_consumption(
-        session['access_token'], charger_id, year, month
-    )
+    # Check cache first
+    ensure_cache_dir(CACHE_DIR_CONSUMPTION)
+    cache_file = get_consumption_cache_file_path(charger_id, year, month)
+    result = None
+    
+    # Try to load from cache first
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'r', encoding='utf-8') as f:
+                cached_data = json.load(f)
+                result = cached_data.get('consumption_data')
+                print(f"Loaded consumption from cache: {charger_id}_{year}-{month:02d}")
+        except Exception as e:
+            print(f"Error reading consumption cache file {cache_file}: {str(e)}")
+            # If cache read fails, continue to API call
+    
+    # If not in cache, fetch from API
+    success = True
+    if result is None:
+        success, result = easee_api.get_hourly_consumption(
+            session['access_token'], charger_id, year, month
+        )
+        
+        # Save to cache if successful
+        if success and result is not None:
+            try:
+                cache_data = {
+                    'charger_id': charger_id,
+                    'year': year,
+                    'month': month,
+                    'cached_at': datetime.now().isoformat(),
+                    'consumption_data': result
+                }
+                with open(cache_file, 'w', encoding='utf-8') as f:
+                    json.dump(cache_data, f, indent=2, ensure_ascii=False)
+                print(f"Downloaded and cached consumption: {charger_id}_{year}-{month:02d}")
+            except Exception as e:
+                print(f"Error saving consumption cache file {cache_file}: {str(e)}")
     
     if success:
         # Fetch electricity prices for the month
