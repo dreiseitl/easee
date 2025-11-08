@@ -270,6 +270,9 @@ def api_consumption(charger_id):
     year = request.args.get('year', type=int)
     month = request.args.get('month', type=int)
     price_area = request.args.get('price_area', 'NO1')  # Default to NO1 (Oslo)
+    elavgift = request.args.get('elavgift', type=float, default=0.0)
+    dayprice = request.args.get('dayprice', type=float, default=0.0)
+    nightprice = request.args.get('nightprice', type=float, default=0.0)
     
     if not year or not month:
         return jsonify({'error': 'Year and month are required'}), 400
@@ -372,6 +375,8 @@ def api_consumption(charger_id):
                         
                         # Try to match timestamp with price
                         price_per_kwh = 0
+                        distribution_fee = 0
+                        dt = None
                         if timestamp:
                             try:
                                 # Parse timestamp and create hour key
@@ -387,20 +392,46 @@ def api_consumption(charger_id):
                                                 break
                                             except:
                                                 continue
-                                    hour_key = dt.strftime('%Y-%m-%dT%H:00:00')
-                                    price_per_kwh = prices_by_hour.get(hour_key, 0)
+                                    if dt:
+                                        hour_key = dt.strftime('%Y-%m-%dT%H:00:00')
+                                        price_per_kwh = prices_by_hour.get(hour_key, 0)
                             except:
                                 # If parsing fails, try to find closest match
                                 pass
                         
+                        # Calculate distribution fees
+                        if dt:
+                            hour = dt.hour
+                            weekday = dt.weekday()  # 0 = Monday, 6 = Sunday
+                            is_weekend = weekday >= 5  # Saturday (5) or Sunday (6)
+                            
+                            # Add elavgift (applies to all hours)
+                            distribution_fee += elavgift
+                            
+                            # Add day/night price based on time and weekday
+                            if is_weekend:
+                                # Weekend: always night price
+                                distribution_fee += nightprice
+                            elif 6 <= hour <= 22:
+                                # Working day, hours 6-22: day price
+                                distribution_fee += dayprice
+                            else:
+                                # Working day, hours 23-5: night price
+                                distribution_fee += nightprice
+                        
+                        # Total price per kWh = market price + distribution fees
+                        total_price_per_kwh = price_per_kwh + distribution_fee
+                        
                         # Calculate cost for this hour
-                        cost = kwh * price_per_kwh
+                        cost = kwh * total_price_per_kwh
                         total_cost += cost
                         
                         hourly_data.append({
                             'timestamp': timestamp,
                             'consumption': kwh,
-                            'price_per_kwh': round(price_per_kwh, 4),
+                            'market_price_per_kwh': round(price_per_kwh, 4),
+                            'distribution_fee_per_kwh': round(distribution_fee, 4),
+                            'total_price_per_kwh': round(total_price_per_kwh, 4),
                             'cost': round(cost, 2)
                         })
             
@@ -410,6 +441,9 @@ def api_consumption(charger_id):
                 'total_kwh': round(total_kwh, 2),
                 'total_cost': round(total_cost, 2),
                 'price_area': price_area,
+                'elavgift': elavgift,
+                'dayprice': dayprice,
+                'nightprice': nightprice,
                 'hourly_data': hourly_data
             })
         except Exception as e:

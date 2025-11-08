@@ -235,6 +235,24 @@
                 </select>
             </div>
             
+            <div class="form-group">
+                <label for="elavgift-input">Elavgift (NOK/kWh)</label>
+                <input type="number" id="elavgift-input" step="0.0001" min="0" value="0" placeholder="0.0000">
+                <small style="color: #666; font-size: 12px;">Electricity tax per kWh (applies to all hours)</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="dayprice-input">Day Price (NOK/kWh)</label>
+                <input type="number" id="dayprice-input" step="0.0001" min="0" value="0" placeholder="0.0000">
+                <small style="color: #666; font-size: 12px;">Distribution fee for hours 6-22 on working days (Mon-Fri)</small>
+            </div>
+            
+            <div class="form-group">
+                <label for="nightprice-input">Night Price (NOK/kWh)</label>
+                <input type="number" id="nightprice-input" step="0.0001" min="0" value="0" placeholder="0.0000">
+                <small style="color: #666; font-size: 12px;">Distribution fee for hours 23-5 and all weekend hours</small>
+            </div>
+            
             <button class="btn" onclick="generateReport()" id="generate-btn" disabled>Generate Report</button>
             
             <div id="error-message" class="error hidden"></div>
@@ -340,6 +358,9 @@
             const chargerId = document.getElementById('charger-select').value;
             const month = document.getElementById('month-select').value;
             const priceArea = document.getElementById('price-area-select').value;
+            const elavgift = parseFloat(document.getElementById('elavgift-input').value) || 0;
+            const dayprice = parseFloat(document.getElementById('dayprice-input').value) || 0;
+            const nightprice = parseFloat(document.getElementById('nightprice-input').value) || 0;
             
             if (!chargerId || !month) {
                 showError('Please select a charger and month');
@@ -353,7 +374,16 @@
                 hideError();
                 hideReport();
                 
-                const response = await fetch(`/api/consumption/${chargerId}?year=${year}&month=${monthNum}&price_area=${priceArea}`);
+                const params = new URLSearchParams({
+                    year: year,
+                    month: monthNum,
+                    price_area: priceArea,
+                    elavgift: elavgift,
+                    dayprice: dayprice,
+                    nightprice: nightprice
+                });
+                
+                const response = await fetch(`/api/consumption/${chargerId}?${params.toString()}`);
                 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
@@ -416,6 +446,29 @@
                         <span class="summary-label">Average Price per kWh:</span>
                         <span class="summary-value">${data.total_kwh > 0 ? (data.total_cost / data.total_kwh).toFixed(4) : '0.0000'} NOK/kWh</span>
                     </div>
+                    ${data.elavgift > 0 || data.dayprice > 0 || data.nightprice > 0 ? `
+                    <div class="summary-item" style="border-top: 2px solid #e0e0e0; margin-top: 10px; padding-top: 10px;">
+                        <span class="summary-label" style="font-weight: 600;">Distribution Fees Applied:</span>
+                    </div>
+                    ${data.elavgift > 0 ? `
+                    <div class="summary-item">
+                        <span class="summary-label">Elavgift:</span>
+                        <span class="summary-value">${data.elavgift.toFixed(4)} NOK/kWh</span>
+                    </div>
+                    ` : ''}
+                    ${data.dayprice > 0 ? `
+                    <div class="summary-item">
+                        <span class="summary-label">Day Price (6-22, Mon-Fri):</span>
+                        <span class="summary-value">${data.dayprice.toFixed(4)} NOK/kWh</span>
+                    </div>
+                    ` : ''}
+                    ${data.nightprice > 0 ? `
+                    <div class="summary-item">
+                        <span class="summary-label">Night Price (23-5 & Weekends):</span>
+                        <span class="summary-value">${data.nightprice.toFixed(4)} NOK/kWh</span>
+                    </div>
+                    ` : ''}
+                    ` : ''}
                 </div>
             `;
             
@@ -427,7 +480,9 @@
                             <tr>
                                 <th>Date & Time</th>
                                 <th>Consumption (kWh)</th>
-                                <th>Price (NOK/kWh)</th>
+                                <th>Market Price (NOK/kWh)</th>
+                                <th>Distribution Fee (NOK/kWh)</th>
+                                <th>Total Price (NOK/kWh)</th>
                                 <th>Cost (NOK)</th>
                             </tr>
                         </thead>
@@ -443,13 +498,17 @@
                         hour: '2-digit',
                         minute: '2-digit'
                     });
-                    const priceDisplay = entry.price_per_kwh > 0 ? entry.price_per_kwh.toFixed(4) : 'N/A';
+                    const marketPriceDisplay = entry.market_price_per_kwh > 0 ? entry.market_price_per_kwh.toFixed(4) : 'N/A';
+                    const distributionFeeDisplay = entry.distribution_fee_per_kwh > 0 ? entry.distribution_fee_per_kwh.toFixed(4) : '0.0000';
+                    const totalPriceDisplay = entry.total_price_per_kwh > 0 ? entry.total_price_per_kwh.toFixed(4) : 'N/A';
                     const costDisplay = entry.cost > 0 ? entry.cost.toFixed(2) : '0.00';
                     html += `
                         <tr>
                             <td>${dateStr}</td>
                             <td>${entry.consumption.toFixed(3)}</td>
-                            <td>${priceDisplay}</td>
+                            <td>${marketPriceDisplay}</td>
+                            <td>${distributionFeeDisplay}</td>
+                            <td>${totalPriceDisplay}</td>
                             <td>${costDisplay}</td>
                         </tr>
                     `;
