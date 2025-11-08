@@ -67,47 +67,29 @@ class EaseeAPI:
         else:
             end_date = datetime(year, month + 1, 1) - timedelta(seconds=1)
         
-        # Try different possible endpoint formats
-        endpoints_to_try = [
-            f"{self.base_url}/chargers/{charger_id}/consumption/hourly",
-            f"{self.base_url}/chargers/{charger_id}/energy/hourly",
-            f"{self.base_url}/chargers/{charger_id}/consumption",
-        ]
-        
+        # Use lifetime-energy endpoint for hourly consumption
+        url = f"{self.base_url}/chargers/lifetime-energy/{charger_id}/hourly"
         headers = {"Authorization": f"Bearer {access_token}"}
         params = {
             "from": start_date.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
             "to": end_date.strftime("%Y-%m-%dT%H:%M:%S.999Z")
         }
         
-        last_error = None
-        for url in endpoints_to_try:
-            try:
-                response = requests.get(url, headers=headers, params=params)
-                if response.status_code == 200:
-                    return True, response.json()
-                elif response.status_code == 404:
-                    # Try next endpoint
-                    last_error = f"Endpoint not found: {url}"
-                    continue
-                else:
-                    error_msg = f"Status {response.status_code}: {response.text[:200]}"
-                    try:
-                        error_json = response.json()
-                        if isinstance(error_json, dict):
-                            error_msg = error_json.get('message', error_json.get('error', error_msg))
-                    except:
-                        pass
-                    last_error = error_msg
-                    # If it's not a 404, return the error
-                    if response.status_code != 404:
-                        return False, error_msg
-            except Exception as e:
-                last_error = f"Exception for {url}: {str(e)}"
-                continue
-        
-        # If all endpoints failed, return the last error
-        return False, last_error or "All API endpoints failed"
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            if response.status_code == 200:
+                return True, response.json()
+            else:
+                error_msg = f"Status {response.status_code}: {response.text[:200]}"
+                try:
+                    error_json = response.json()
+                    if isinstance(error_json, dict):
+                        error_msg = error_json.get('message', error_json.get('error', error_msg))
+                except:
+                    pass
+                return False, error_msg
+        except Exception as e:
+            return False, f"Exception: {str(e)}"
 
 # Initialize API client
 easee_api = EaseeAPI()
