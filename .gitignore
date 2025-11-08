@@ -48,3 +48,10 @@ Thumbs.db
 # Logs
 *.log
 
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+*.pyc
+__pycache__/
+
