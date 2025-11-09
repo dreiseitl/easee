@@ -439,12 +439,24 @@
                         <span class="summary-value">${data.total_kwh.toFixed(2)} kWh</span>
                     </div>
                     <div class="summary-item">
-                        <span class="summary-label">Total Cost:</span>
-                        <span class="summary-value">${data.total_cost.toFixed(2)} NOK</span>
+                        <span class="summary-label">Total Cost (Market Price):</span>
+                        <span class="summary-value">${data.total_market_cost.toFixed(2)} NOK</span>
                     </div>
                     <div class="summary-item">
-                        <span class="summary-label">Average Price per kWh:</span>
-                        <span class="summary-value">${data.total_kwh > 0 ? (data.total_cost / data.total_kwh).toFixed(4) : '0.0000'} NOK/kWh</span>
+                        <span class="summary-label">Total Cost (Subsidized Price):</span>
+                        <span class="summary-value" style="color: #667eea; font-weight: 600;">${data.total_subsidized_cost.toFixed(2)} NOK</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Savings from Subsidy:</span>
+                        <span class="summary-value" style="color: #28a745; font-weight: 600;">${(data.total_market_cost - data.total_subsidized_cost).toFixed(2)} NOK</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Average Market Price per kWh:</span>
+                        <span class="summary-value">${data.total_kwh > 0 ? (data.total_market_cost / data.total_kwh).toFixed(4) : '0.0000'} NOK/kWh</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="summary-label">Average Subsidized Price per kWh:</span>
+                        <span class="summary-value" style="color: #667eea;">${data.total_kwh > 0 ? (data.total_subsidized_cost / data.total_kwh).toFixed(4) : '0.0000'} NOK/kWh</span>
                     </div>
                     ${data.elavgift > 0 || data.dayprice > 0 || data.nightprice > 0 ? `
                     <div class="summary-item" style="border-top: 2px solid #e0e0e0; margin-top: 10px; padding-top: 10px;">
@@ -481,9 +493,12 @@
                                 <th>Date & Time</th>
                                 <th>Consumption (kWh)</th>
                                 <th>Market Price (NOK/kWh)</th>
+                                <th>Subsidized Price (NOK/kWh)</th>
                                 <th>Distribution Fee (NOK/kWh)</th>
-                                <th>Total Price (NOK/kWh)</th>
-                                <th>Cost (NOK)</th>
+                                <th>Total Market Price (NOK/kWh)</th>
+                                <th>Total Subsidized Price (NOK/kWh)</th>
+                                <th>Market Cost (NOK)</th>
+                                <th>Subsidized Cost (NOK)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -499,17 +514,23 @@
                         minute: '2-digit'
                     });
                     const marketPriceDisplay = entry.market_price_per_kwh > 0 ? entry.market_price_per_kwh.toFixed(4) : 'N/A';
+                    const subsidizedPriceDisplay = entry.subsidized_price_per_kwh > 0 ? entry.subsidized_price_per_kwh.toFixed(4) : 'N/A';
                     const distributionFeeDisplay = entry.distribution_fee_per_kwh > 0 ? entry.distribution_fee_per_kwh.toFixed(4) : '0.0000';
-                    const totalPriceDisplay = entry.total_price_per_kwh > 0 ? entry.total_price_per_kwh.toFixed(4) : 'N/A';
-                    const costDisplay = entry.cost > 0 ? entry.cost.toFixed(2) : '0.00';
+                    const totalMarketPriceDisplay = entry.total_market_price_per_kwh > 0 ? entry.total_market_price_per_kwh.toFixed(4) : 'N/A';
+                    const totalSubsidizedPriceDisplay = entry.total_subsidized_price_per_kwh > 0 ? entry.total_subsidized_price_per_kwh.toFixed(4) : 'N/A';
+                    const marketCostDisplay = entry.market_cost > 0 ? entry.market_cost.toFixed(2) : '0.00';
+                    const subsidizedCostDisplay = entry.subsidized_cost > 0 ? entry.subsidized_cost.toFixed(2) : '0.00';
                     html += `
                         <tr>
                             <td>${dateStr}</td>
                             <td>${entry.consumption.toFixed(3)}</td>
                             <td>${marketPriceDisplay}</td>
+                            <td style="color: #667eea;">${subsidizedPriceDisplay}</td>
                             <td>${distributionFeeDisplay}</td>
-                            <td>${totalPriceDisplay}</td>
-                            <td>${costDisplay}</td>
+                            <td>${totalMarketPriceDisplay}</td>
+                            <td style="color: #667eea;">${totalSubsidizedPriceDisplay}</td>
+                            <td>${marketCostDisplay}</td>
+                            <td style="color: #667eea; font-weight: 500;">${subsidizedCostDisplay}</td>
                         </tr>
                     `;
                 });

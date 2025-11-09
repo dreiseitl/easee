@@ -330,7 +330,8 @@ def api_consumption(charger_id):
         
         # Calculate total consumption and price
         total_kwh = 0
-        total_cost = 0
+        total_market_cost = 0
+        total_subsidized_cost = 0
         hourly_data = []
         
         try:
@@ -399,6 +400,14 @@ def api_consumption(charger_id):
                                 # If parsing fails, try to find closest match
                                 pass
                         
+                        # Calculate subsidized price
+                        # If market price > 0.75 NOK/kWh: subsidized = 0.75 + 10% of (market - 0.75)
+                        # If market price <= 0.75 NOK/kWh: subsidized = market price
+                        if price_per_kwh > 0.75:
+                            subsidized_price_per_kwh = 0.75 + 0.10 * (price_per_kwh - 0.75)
+                        else:
+                            subsidized_price_per_kwh = price_per_kwh
+                        
                         # Calculate distribution fees
                         if dt:
                             hour = dt.hour
@@ -419,27 +428,34 @@ def api_consumption(charger_id):
                                 # Working day, hours 23-5: night price
                                 distribution_fee += nightprice
                         
-                        # Total price per kWh = market price + distribution fees
-                        total_price_per_kwh = price_per_kwh + distribution_fee
+                        # Total price per kWh = market/subsidized price + distribution fees
+                        total_market_price_per_kwh = price_per_kwh + distribution_fee
+                        total_subsidized_price_per_kwh = subsidized_price_per_kwh + distribution_fee
                         
-                        # Calculate cost for this hour
-                        cost = kwh * total_price_per_kwh
-                        total_cost += cost
+                        # Calculate costs for this hour
+                        market_cost = kwh * total_market_price_per_kwh
+                        subsidized_cost = kwh * total_subsidized_price_per_kwh
+                        total_market_cost += market_cost
+                        total_subsidized_cost += subsidized_cost
                         
                         hourly_data.append({
                             'timestamp': timestamp,
                             'consumption': kwh,
                             'market_price_per_kwh': round(price_per_kwh, 4),
+                            'subsidized_price_per_kwh': round(subsidized_price_per_kwh, 4),
                             'distribution_fee_per_kwh': round(distribution_fee, 4),
-                            'total_price_per_kwh': round(total_price_per_kwh, 4),
-                            'cost': round(cost, 2)
+                            'total_market_price_per_kwh': round(total_market_price_per_kwh, 4),
+                            'total_subsidized_price_per_kwh': round(total_subsidized_price_per_kwh, 4),
+                            'market_cost': round(market_cost, 2),
+                            'subsidized_cost': round(subsidized_cost, 2)
                         })
             
             return jsonify({
                 'success': True,
                 'consumption': result,
                 'total_kwh': round(total_kwh, 2),
-                'total_cost': round(total_cost, 2),
+                'total_market_cost': round(total_market_cost, 2),
+                'total_subsidized_cost': round(total_subsidized_cost, 2),
                 'price_area': price_area,
                 'elavgift': elavgift,
                 'dayprice': dayprice,
